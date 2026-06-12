@@ -13,7 +13,9 @@ class GameSocket {
   WebSocketChannel? _channel;
 
   Stream<Map<String, dynamic>> connect() {
-    final uri = Uri.parse(baseUrl).replace(queryParameters: {
+    final baseUri = Uri.parse(baseUrl);
+    final uri = baseUri.replace(queryParameters: {
+      ...baseUri.queryParameters,
       'playerId': playerId,
     });
     _channel = WebSocketChannel.connect(uri);
@@ -21,6 +23,8 @@ class GameSocket {
       return jsonDecode(event as String) as Map<String, dynamic>;
     });
   }
+
+  Future<void> get ready => _channel?.ready ?? Future<void>.value();
 
   void send(String type, String requestId, Map<String, dynamic> payload) {
     _channel?.sink.add(jsonEncode({
