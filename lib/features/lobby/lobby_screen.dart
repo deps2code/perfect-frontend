@@ -35,7 +35,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   final _displayNameController = TextEditingController(text: 'Player One');
   final _roomCodeController = TextEditingController(text: 'room_1');
   final _totalRoundsController = TextEditingController(text: '3');
-  final _bidController = TextEditingController(text: '0');
+  int _selectedBid = 0;
   String _trumpSuit = 'clubs';
 
   @override
@@ -44,7 +44,6 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     _displayNameController.dispose();
     _roomCodeController.dispose();
     _totalRoundsController.dispose();
-    _bidController.dispose();
     super.dispose();
   }
 
@@ -96,16 +95,15 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
             ),
           AppView.game => _GameTableView(
               state: state,
-              bidController: _bidController,
+              selectedBid: _selectedBid,
               trumpSuit: _trumpSuit,
               onTrumpChanged: (value) {
                 if (value != null) {
                   setState(() => _trumpSuit = value);
                 }
               },
-              onBid: () => controller.placeBid(
-                int.tryParse(_bidController.text.trim()) ?? 0,
-              ),
+              onBidChanged: (value) => setState(() => _selectedBid = value),
+              onBid: controller.placeBid,
               onSelectTrump: () => controller.selectTrump(_trumpSuit),
               onAcknowledgeRoundScore: controller.acknowledgeRoundScore,
               onPlayCard: controller.playCard,
@@ -495,6 +493,402 @@ class _TopBar extends StatelessWidget {
   }
 }
 
+class _GameTopBar extends StatelessWidget {
+  const _GameTopBar({
+    required this.profile,
+    required this.error,
+    required this.roomId,
+    required this.snapshot,
+  });
+
+  final Profile? profile;
+  final String? error;
+  final String roomId;
+  final GameSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final compact = constraints.maxWidth < 760;
+      final roomSegment = _GameBarSegment(
+        icon: Icons.style_rounded,
+        title: roomId,
+        subtitle:
+            'Round ${snapshot.roundNumber}/${snapshot.totalRounds} - ${snapshot.cardsPerPlayer} card${snapshot.cardsPerPlayer == 1 ? '' : 's'}',
+      );
+      final stateSegment = _GameBarSegment(
+        icon: Icons.hourglass_top_rounded,
+        title: _gameStateText(snapshot),
+        subtitle: snapshot.status,
+        accent: const Color(0xFF2FE6A6),
+      );
+      final actions = _GameBarActions(snapshot: snapshot);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0x22FFFFFF)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 26,
+                  offset: Offset(0, 14),
+                ),
+              ],
+            ),
+            child: compact
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      roomSegment,
+                      const SizedBox(height: 8),
+                      stateSegment,
+                      const SizedBox(height: 8),
+                      actions,
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(flex: 3, child: roomSegment),
+                      const SizedBox(width: 8),
+                      Expanded(flex: 4, child: stateSegment),
+                      const SizedBox(width: 8),
+                      actions,
+                      if (profile != null) ...[
+                        const SizedBox(width: 8),
+                        _Avatar(profile: profile!, size: 42),
+                      ],
+                    ],
+                  ),
+          ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 18, top: 8),
+              child: Text(
+                error!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Color(0xFFFF6B8A)),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+}
+
+String _gameStateText(GameSnapshot snapshot) {
+  final player = snapshot.currentTurnPlayerId;
+  switch (snapshot.status) {
+    case 'BIDDING':
+      return player == null ? 'Waiting for bids' : 'Waiting for $player to bid';
+    case 'TRUMP_SELECTION':
+      final chooser = player ?? snapshot.highestBidderPlayerId;
+      return chooser == null
+          ? 'Waiting for trump selection'
+          : 'Waiting for $chooser to choose trump';
+    case 'TRICK_PLAY':
+      return player == null
+          ? 'Waiting for the next card'
+          : 'Waiting for $player to play a card';
+    case 'ROUND_SCORING':
+      return 'Waiting for players to review the round score';
+    case 'FINISHED':
+      return 'Game complete';
+    case 'WAITING':
+      return 'Waiting for players';
+    default:
+      return snapshot.status;
+  }
+}
+
+class _GameBarSegment extends StatelessWidget {
+  const _GameBarSegment({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.accent = Colors.white,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF202020),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: accent == Colors.white ? Colors.white : accent,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: const Color(0xFF111111),
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFB8B8B8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GameBarActions extends StatelessWidget {
+  const _GameBarActions({required this.snapshot});
+
+  final GameSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: [
+        _GameBarButton(
+          icon: Icons.groups_2_outlined,
+          label: 'Players',
+          badge: '${snapshot.players.length}',
+          onPressed: () => _showPlayersDialog(context, snapshot),
+        ),
+        _GameBarButton(
+          icon: Icons.chat_bubble_outline_rounded,
+          label: 'Chat',
+          onPressed: () {},
+        ),
+      ],
+    );
+  }
+}
+
+class _GameBarButton extends StatelessWidget {
+  const _GameBarButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final String? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: const Color(0xFF202020),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 24),
+                if (badge != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      badge!,
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _showPlayersDialog(BuildContext context, GameSnapshot snapshot) {
+  showDialog<void>(
+    context: context,
+    builder: (context) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xFF070707),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0x22FFFFFF)),
+              boxShadow: const [
+                BoxShadow(color: Color(0x99000000), blurRadius: 32),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Players',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                for (final player in snapshot.players) ...[
+                  _PlayerScoreRow(player: player),
+                  const SizedBox(height: 8),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _PlayerScoreRow extends StatelessWidget {
+  const _PlayerScoreRow({required this.player});
+
+  final PlayerSnapshot player;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF202020),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                player.id.isEmpty ? '?' : player.id[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              player.id,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${player.totalScore}',
+            style: const TextStyle(
+              color: Color(0xFFFFD86A),
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Text(
+            'pts',
+            style: TextStyle(
+              color: Color(0xFFB8B8B8),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HeroFeature extends StatelessWidget {
   const _HeroFeature({required this.onOpenLobby});
 
@@ -845,9 +1239,10 @@ class _LobbyRoomCard extends StatelessWidget {
 class _GameTableView extends StatefulWidget {
   const _GameTableView({
     required this.state,
-    required this.bidController,
+    required this.selectedBid,
     required this.trumpSuit,
     required this.onTrumpChanged,
+    required this.onBidChanged,
     required this.onBid,
     required this.onSelectTrump,
     required this.onAcknowledgeRoundScore,
@@ -856,10 +1251,11 @@ class _GameTableView extends StatefulWidget {
   });
 
   final AppState state;
-  final TextEditingController bidController;
+  final int selectedBid;
   final String trumpSuit;
   final ValueChanged<String?> onTrumpChanged;
-  final VoidCallback onBid;
+  final ValueChanged<int> onBidChanged;
+  final ValueChanged<int> onBid;
   final VoidCallback onSelectTrump;
   final VoidCallback onAcknowledgeRoundScore;
   final ValueChanged<String> onPlayCard;
@@ -911,6 +1307,7 @@ class _GameTableViewState extends State<_GameTableView> {
     _scoreDialogOpen = true;
     await showDialog<void>(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.18),
       barrierDismissible: false,
       builder: (context) {
         return Dialog(
@@ -968,11 +1365,11 @@ class _GameTableViewState extends State<_GameTableView> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-          child: _TopBar(
+          child: _GameTopBar(
             profile: widget.state.profile,
             error: widget.state.error,
-            status:
-                'Room ${widget.state.activeRoomId ?? snapshot.id} - ${snapshot.status}',
+            roomId: widget.state.activeRoomId ?? snapshot.id,
+            snapshot: snapshot,
           ),
         ),
         Expanded(
@@ -990,9 +1387,10 @@ class _GameTableViewState extends State<_GameTableView> {
           child: _GameActionBar(
             snapshot: snapshot,
             me: me,
-            bidController: widget.bidController,
+            selectedBid: widget.selectedBid,
             trumpSuit: widget.trumpSuit,
             onTrumpChanged: widget.onTrumpChanged,
+            onBidChanged: widget.onBidChanged,
             onBid: widget.onBid,
             onSelectTrump: widget.onSelectTrump,
           ),
@@ -1315,7 +1713,14 @@ class _PlayerHandFan extends StatelessWidget {
   Widget build(BuildContext context) {
     final cards = player?.hand ?? <CardSnapshot>[];
     if (cards.isEmpty) {
-      return const Center(child: _MutedText('Your cards will appear here.'));
+      final hiddenHandSize = player?.handSize ?? 0;
+      return Center(
+        child: _MutedText(
+          hiddenHandSize > 0
+              ? 'Your card will appear after bidding and trump selection.'
+              : 'Your cards will appear here.',
+        ),
+      );
     }
 
     return AnimatedBuilder(
@@ -1374,25 +1779,30 @@ class _GameActionBar extends StatelessWidget {
   const _GameActionBar({
     required this.snapshot,
     required this.me,
-    required this.bidController,
+    required this.selectedBid,
     required this.trumpSuit,
     required this.onTrumpChanged,
+    required this.onBidChanged,
     required this.onBid,
     required this.onSelectTrump,
   });
 
   final GameSnapshot snapshot;
   final PlayerSnapshot? me;
-  final TextEditingController bidController;
+  final int selectedBid;
   final String trumpSuit;
   final ValueChanged<String?> onTrumpChanged;
-  final VoidCallback onBid;
+  final ValueChanged<int> onBidChanged;
+  final ValueChanged<int> onBid;
   final VoidCallback onSelectTrump;
 
   @override
   Widget build(BuildContext context) {
     final actions = snapshot.viewerAvailableActions;
     final isMyTurn = snapshot.currentTurnPlayerId == me?.id;
+    final bidOptions = _availableBidOptions(snapshot);
+    final selectedAvailableBid =
+        bidOptions.contains(selectedBid) ? selectedBid : bidOptions.first;
     return _GlowPanel(
       padding: const EdgeInsets.all(14),
       child: Wrap(
@@ -1413,13 +1823,26 @@ class _GameActionBar extends StatelessWidget {
           if (actions.contains('PLACE_BID')) ...[
             SizedBox(
               width: 110,
-              child: _DarkField(
-                controller: bidController,
-                label: 'Bid',
-                keyboardType: TextInputType.number,
+              child: DropdownButtonFormField<int>(
+                value: selectedAvailableBid,
+                dropdownColor: const Color(0xFF07122C),
+                decoration: _darkInputDecoration('Bid'),
+                style: const TextStyle(color: Colors.white),
+                items: [
+                  for (final bid in bidOptions)
+                    DropdownMenuItem(value: bid, child: Text('$bid')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    onBidChanged(value);
+                  }
+                },
               ),
             ),
-            FilledButton(onPressed: onBid, child: const Text('Place bid')),
+            FilledButton(
+              onPressed: () => onBid(selectedAvailableBid),
+              child: const Text('Place bid'),
+            ),
           ],
           if (actions.contains('SELECT_TRUMP')) ...[
             SizedBox(
@@ -1455,6 +1878,22 @@ class _GameActionBar extends StatelessWidget {
       ),
     );
   }
+}
+
+List<int> _availableBidOptions(GameSnapshot snapshot) {
+  final maxBid = math.max(0, snapshot.cardsPerPlayer);
+  final bidsPlaced = snapshot.players.where((player) => player.hasBid).length;
+  final isLastBidder = bidsPlaced == snapshot.players.length - 1;
+  final placedBidTotal = snapshot.players
+      .where((player) => player.hasBid)
+      .fold<int>(0, (total, player) => total + player.bid);
+  final forbiddenLastBid = snapshot.cardsPerPlayer - placedBidTotal;
+  final options = [
+    for (var bid = 0; bid <= maxBid; bid++)
+      if (!isLastBidder || bid != forbiddenLastBid) bid,
+  ];
+
+  return options.isEmpty ? [0] : options;
 }
 
 class _TableSuitBadges extends StatelessWidget {
@@ -1541,8 +1980,16 @@ class _RoundScoreModal extends StatelessWidget {
         return a.playerId.compareTo(b.playerId);
       });
 
-    return _GlowPanel(
+    return Container(
       padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0x9909122F),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x6630E6FF)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x66000000), blurRadius: 26),
+        ],
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1587,6 +2034,7 @@ class _RoundScoreModal extends StatelessWidget {
                 DataColumn(label: Text('Tricks')),
                 DataColumn(label: Text('Round')),
                 DataColumn(label: Text('Total')),
+                DataColumn(label: Text('History')),
               ],
               rows: List.generate(ranked.length, (index) {
                 final score = ranked[index];
@@ -1609,6 +2057,10 @@ class _RoundScoreModal extends StatelessWidget {
                     DataCell(Text('${score.tricksWon}')),
                     DataCell(Text('+${score.scoreEarned}')),
                     DataCell(Text('${score.totalScore}')),
+                    DataCell(_PlayerRoundHistoryButton(
+                      playerId: score.playerId,
+                      roundScores: snapshot.roundScores,
+                    )),
                   ],
                 );
               }),
@@ -1627,6 +2079,58 @@ class _RoundScoreModal extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PlayerRoundHistoryButton extends StatelessWidget {
+  const _PlayerRoundHistoryButton({
+    required this.playerId,
+    required this.roundScores,
+  });
+
+  final String playerId;
+  final List<RoundScoreSnapshot> roundScores;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = <String>[];
+    for (final round in roundScores) {
+      PlayerRoundScoreSnapshot? playerScore;
+      for (final score in round.players) {
+        if (score.playerId == playerId) {
+          playerScore = score;
+          break;
+        }
+      }
+      if (playerScore == null) {
+        continue;
+      }
+      lines.add(
+          'Round ${round.roundNumber}: +${playerScore.scoreEarned} (total ${playerScore.totalScore})');
+    }
+
+    return Tooltip(
+      message: lines.isEmpty ? 'No round scores yet' : lines.join('\n'),
+      waitDuration: const Duration(milliseconds: 250),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0x332FE6A6),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0x552FE6A6)),
+          ),
+          child: const Icon(
+            Icons.query_stats_rounded,
+            color: Color(0xFF7AF7CF),
+            size: 18,
+          ),
+        ),
       ),
     );
   }
