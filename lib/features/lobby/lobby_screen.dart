@@ -21,7 +21,7 @@ final appControllerProvider =
   return controller;
 });
 
-enum AppView { landing, lobby, game }
+enum AppView { landing, profile, lobby, game }
 
 class LobbyScreen extends ConsumerStatefulWidget {
   const LobbyScreen({super.key});
@@ -57,6 +57,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
         selected: state.view,
         profile: state.profile,
         onOpenLanding: () => controller.setView(AppView.landing),
+        onOpenProfile: () => controller.setView(AppView.profile),
         onOpenLobby: () => controller.setView(AppView.lobby),
         onOpenGame: state.snapshot == null
             ? null
@@ -80,6 +81,13 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
                 _roomCodeController.text.trim(),
                 int.tryParse(_totalRoundsController.text.trim()) ?? 3,
               ),
+            ),
+          AppView.profile => _ProfileView(
+              state: state,
+              onOpenLobby: () {
+                controller.setView(AppView.lobby);
+                controller.refreshRooms();
+              },
             ),
           AppView.lobby => _GameLobbyView(
               state: state,
@@ -120,6 +128,7 @@ class _CasinoShell extends StatelessWidget {
     required this.selected,
     required this.profile,
     required this.onOpenLanding,
+    required this.onOpenProfile,
     required this.onOpenLobby,
     required this.onOpenGame,
     required this.child,
@@ -128,6 +137,7 @@ class _CasinoShell extends StatelessWidget {
   final AppView selected;
   final Profile? profile;
   final VoidCallback onOpenLanding;
+  final VoidCallback onOpenProfile;
   final VoidCallback onOpenLobby;
   final VoidCallback? onOpenGame;
   final Widget child;
@@ -150,6 +160,7 @@ class _CasinoShell extends StatelessWidget {
               selected: selected,
               profile: profile,
               onOpenLanding: onOpenLanding,
+              onOpenProfile: onOpenProfile,
               onOpenLobby: onOpenLobby,
               onOpenGame: onOpenGame,
               compact: !wide,
@@ -180,6 +191,7 @@ class _SideNav extends StatelessWidget {
     required this.selected,
     required this.profile,
     required this.onOpenLanding,
+    required this.onOpenProfile,
     required this.onOpenLobby,
     required this.onOpenGame,
     required this.compact,
@@ -188,6 +200,7 @@ class _SideNav extends StatelessWidget {
   final AppView selected;
   final Profile? profile;
   final VoidCallback onOpenLanding;
+  final VoidCallback onOpenProfile;
   final VoidCallback onOpenLobby;
   final VoidCallback? onOpenGame;
   final bool compact;
@@ -203,6 +216,12 @@ class _SideNav extends StatelessWidget {
         onPressed: onOpenLanding,
       ),
       _NavButton(
+        label: 'Profile',
+        icon: Icons.person_rounded,
+        selected: selected == AppView.profile,
+        onPressed: onOpenProfile,
+      ),
+      _NavButton(
         label: 'Game Lobby',
         icon: Icons.grid_view_rounded,
         selected: selected == AppView.lobby,
@@ -215,8 +234,8 @@ class _SideNav extends StatelessWidget {
         onPressed: onOpenGame,
       ),
       if (!compact) const Spacer(),
-      if (profile != null)
-        _MiniProfile(profile: profile!)
+      if (!compact && profile != null)
+        _MiniProfile(profile: profile!, onTap: onOpenProfile)
       else if (!compact)
         const _MutedText('Register to play online'),
     ];
@@ -315,37 +334,659 @@ class _NavButton extends StatelessWidget {
 }
 
 class _MiniProfile extends StatelessWidget {
-  const _MiniProfile({required this.profile});
+  const _MiniProfile({required this.profile, this.onTap});
+
+  final Profile profile;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: onTap == null ? 0 : 6),
+        child: Row(
+          children: [
+            _Avatar(profile: profile, size: 42),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    profile.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    profile.playerId,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(color: Color(0xFF7888BE), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            if (onTap != null)
+              const Icon(Icons.chevron_right_rounded,
+                  color: Color(0xFF7888BE), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileView extends StatelessWidget {
+  const _ProfileView({required this.state, required this.onOpenLobby});
+
+  final AppState state;
+  final VoidCallback onOpenLobby;
+
+  static const _games = [
+    _PlayerGame(
+      room: 'midnight-ace',
+      result: 'Win',
+      score: 42,
+      rounds: 5,
+      playedAt: 'Today',
+      opponents: 'Mira, Omar, Jules',
+    ),
+    _PlayerGame(
+      room: 'clubhouse-7',
+      result: 'Loss',
+      score: 28,
+      rounds: 4,
+      playedAt: 'Yesterday',
+      opponents: 'Nina, Sol, Dex',
+    ),
+    _PlayerGame(
+      room: 'neon-table',
+      result: 'Win',
+      score: 36,
+      rounds: 3,
+      playedAt: 'Jun 12',
+      opponents: 'Paz, River',
+    ),
+    _PlayerGame(
+      room: 'late-bid',
+      result: 'Loss',
+      score: 18,
+      rounds: 3,
+      playedAt: 'Jun 10',
+      opponents: 'Ivy, Kenji, Bea',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = state.profile ??
+        const Profile(
+          playerId: 'guest',
+          displayName: 'Guest Player',
+          avatar: 'profile',
+          color: Color(0xFFFF7A90),
+        );
+    final wins = _games.where((game) => game.result == 'Win').length;
+    final losses = _games.where((game) => game.result == 'Loss').length;
+    final winRate = _games.isEmpty ? 0 : ((wins / _games.length) * 100).round();
+
+    return _ScreenScroll(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ProfileHeader(
+            profile: profile,
+            wins: wins,
+            losses: losses,
+            winRate: winRate,
+            registered: state.profile != null,
+            onOpenLobby: onOpenLobby,
+          ),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final twoColumns = constraints.maxWidth >= 980;
+              final details = _ProfileDetails(profile: profile);
+              final stats = _ProfileStats(
+                  wins: wins, losses: losses, games: _games.length);
+              if (!twoColumns) {
+                return Column(
+                  children: [
+                    details,
+                    const SizedBox(height: 18),
+                    stats,
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 3, child: details),
+                  const SizedBox(width: 18),
+                  Expanded(flex: 2, child: stats),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          _PlayerGamesPanel(games: _games),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.profile,
+    required this.wins,
+    required this.losses,
+    required this.winRate,
+    required this.registered,
+    required this.onOpenLobby,
+  });
+
+  final Profile profile;
+  final int wins;
+  final int losses;
+  final int winRate;
+  final bool registered;
+  final VoidCallback onOpenLobby;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlowPanel(
+      padding: const EdgeInsets.all(0),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          return Padding(
+            padding: const EdgeInsets.all(22),
+            child: Flex(
+              direction: compact ? Axis.vertical : Axis.horizontal,
+              crossAxisAlignment: compact
+                  ? CrossAxisAlignment.stretch
+                  : CrossAxisAlignment.center,
+              children: [
+                Center(
+                    child:
+                        _Avatar(profile: profile, size: compact ? 152 : 178)),
+                SizedBox(width: compact ? 0 : 24, height: compact ? 18 : 0),
+                if (compact)
+                  _ProfileIdentityBlock(
+                    profile: profile,
+                    registered: registered,
+                    wins: wins,
+                    losses: losses,
+                    winRate: winRate,
+                    compact: true,
+                  )
+                else
+                  Expanded(
+                    child: _ProfileIdentityBlock(
+                      profile: profile,
+                      registered: registered,
+                      wins: wins,
+                      losses: losses,
+                      winRate: winRate,
+                      compact: false,
+                    ),
+                  ),
+                SizedBox(width: compact ? 0 : 18, height: compact ? 18 : 0),
+                Align(
+                  alignment: compact ? Alignment.center : Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: onOpenLobby,
+                    icon: const Icon(Icons.grid_view_rounded),
+                    label: const Text('Open Lobby'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProfileDetails extends StatelessWidget {
+  const _ProfileDetails({required this.profile});
 
   final Profile profile;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return _GlowPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _PanelTitle(icon: Icons.badge_rounded, title: 'Player details'),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              _ProfileDetailItem(
+                  label: 'Display name', value: profile.displayName),
+              _ProfileDetailItem(label: 'Player ID', value: profile.playerId),
+              const _ProfileDetailItem(label: 'Favorite suit', value: 'Spades'),
+              const _ProfileDetailItem(
+                  label: 'Play style', value: 'Bold bidder'),
+              const _ProfileDetailItem(label: 'Region', value: 'Online'),
+              const _ProfileDetailItem(label: 'Status', value: 'Available'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileIdentityBlock extends StatelessWidget {
+  const _ProfileIdentityBlock({
+    required this.profile,
+    required this.registered,
+    required this.wins,
+    required this.losses,
+    required this.winRate,
+    required this.compact,
+  });
+
+  final Profile profile;
+  final bool registered;
+  final int wins;
+  final int losses;
+  final int winRate;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment:
+          compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
       children: [
-        _Avatar(profile: profile, size: 42),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
+        _NeonChip(label: registered ? 'REGISTERED PLAYER' : 'PREVIEW PROFILE'),
+        const SizedBox(height: 12),
+        Text(
+          profile.displayName,
+          textAlign: compact ? TextAlign.center : TextAlign.start,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 36,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          profile.playerId,
+          textAlign: compact ? TextAlign.center : TextAlign.start,
+          style: const TextStyle(
+            color: Color(0xFF9DB0E7),
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          alignment: compact ? WrapAlignment.center : WrapAlignment.start,
+          children: [
+            _ProfileMetricTile(
+                label: 'Wins',
+                value: '$wins',
+                icon: Icons.emoji_events_rounded),
+            _ProfileMetricTile(
+                label: 'Losses', value: '$losses', icon: Icons.close_rounded),
+            _ProfileMetricTile(
+                label: 'Win rate',
+                value: '$winRate%',
+                icon: Icons.trending_up_rounded),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileStats extends StatelessWidget {
+  const _ProfileStats({
+    required this.wins,
+    required this.losses,
+    required this.games,
+  });
+
+  final int wins;
+  final int losses;
+  final int games;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlowPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _PanelTitle(icon: Icons.query_stats_rounded, title: 'Record'),
+          const SizedBox(height: 16),
+          _StatBar(
+              label: 'Wins',
+              value: wins,
+              total: games,
+              color: const Color(0xFF2FE6A6)),
+          const SizedBox(height: 14),
+          _StatBar(
+              label: 'Losses',
+              value: losses,
+              total: games,
+              color: const Color(0xFFFF6B8A)),
+          const SizedBox(height: 16),
+          const _MutedText(
+              'Dummy game data for now. Backend history can replace this list later.'),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerGamesPanel extends StatelessWidget {
+  const _PlayerGamesPanel({required this.games});
+
+  final List<_PlayerGame> games;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlowPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _PanelTitle(
+                  icon: Icons.style_rounded,
+                  title: 'Player games (${games.length})',
+                ),
+              ),
+              const _NeonChip(label: 'DUMMY DATA'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (final game in games) ...[
+            _PlayerGameRow(game: game),
+            if (game != games.last) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerGameRow extends StatelessWidget {
+  const _PlayerGameRow({required this.game});
+
+  final _PlayerGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    final won = game.result == 'Win';
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF07122C),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF263B78)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 620;
+          final result = _ResultBadge(won: won);
+          final title = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                profile.displayName,
+                game.room,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w800),
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
+              const SizedBox(height: 4),
               Text(
-                profile.playerId,
+                '${game.playedAt} - ${game.opponents}',
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Color(0xFF7888BE), fontSize: 12),
+                style: const TextStyle(
+                  color: Color(0xFF9DB0E7),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
+          );
+          final metrics = Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            children: [
+              _RoomMetric(label: 'Score', value: '${game.score}'),
+              _RoomMetric(label: 'Rounds', value: '${game.rounds}'),
+            ],
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [Expanded(child: title), result]),
+                const SizedBox(height: 10),
+                metrics,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: title),
+              metrics,
+              const SizedBox(width: 12),
+              result,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProfileMetricTile extends StatelessWidget {
+  const _ProfileMetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 132,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF07122C),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF263B78)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF30E6FF), size: 22),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF9DB0E7),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileDetailItem extends StatelessWidget {
+  const _ProfileDetailItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 230,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF7888BE),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(height: 1, color: const Color(0x1F30E6FF)),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatBar extends StatelessWidget {
+  const _StatBar({
+    required this.label,
+    required this.value,
+    required this.total,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final int total;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = total == 0 ? 0.0 : value / total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            Text(
+              '$value/$total',
+              style: const TextStyle(
+                color: Color(0xFF9DB0E7),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(99),
+          child: LinearProgressIndicator(
+            minHeight: 10,
+            value: progress,
+            color: color,
+            backgroundColor: const Color(0xFF07122C),
           ),
         ),
       ],
     );
   }
+}
+
+class _ResultBadge extends StatelessWidget {
+  const _ResultBadge({required this.won});
+
+  final bool won;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: won ? const Color(0x332FE6A6) : const Color(0x33FF6B8A),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+            color: won ? const Color(0x662FE6A6) : const Color(0x66FF6B8A)),
+      ),
+      child: Text(
+        won ? 'WIN' : 'LOSS',
+        style: TextStyle(
+          color: won ? const Color(0xFF7AF7CF) : const Color(0xFFFF9AAE),
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _PlayerGame {
+  const _PlayerGame({
+    required this.room,
+    required this.result,
+    required this.score,
+    required this.rounds,
+    required this.playedAt,
+    required this.opponents,
+  });
+
+  final String room;
+  final String result;
+  final int score;
+  final int rounds;
+  final String playedAt;
+  final String opponents;
 }
 
 class _LandingDashboard extends StatelessWidget {
@@ -2533,20 +3174,35 @@ class _Avatar extends StatelessWidget {
     return Container(
       width: size,
       height: size,
+      padding: EdgeInsets.all(size * 0.045),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient:
             LinearGradient(colors: [profile.color, const Color(0xFF30E6FF)]),
+        boxShadow: [
+          BoxShadow(
+            color: profile.color.withOpacity(0.26),
+            blurRadius: size * 0.18,
+          ),
+        ],
       ),
-      child: Center(
-        child: Text(
-          profile.displayName.isEmpty
-              ? '?'
-              : profile.displayName[0].toUpperCase(),
-          style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: size * 0.42),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/profile_avatar.png',
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Center(
+              child: Text(
+                profile.displayName.isEmpty
+                    ? '?'
+                    : profile.displayName[0].toUpperCase(),
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: size * 0.42),
+              ),
+            );
+          },
         ),
       ),
     );
