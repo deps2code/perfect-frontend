@@ -73,3 +73,7 @@ Build output directory: build/web
 The Cloudflare Pages build image does not include Flutter by default. The build
 script installs Flutter stable into `/tmp/flutter` during the Pages build before
 running `flutter build web`.
+
+If deploying through Cloudflare Workers static assets, keep `wrangler.toml`
+committed. It points Cloudflare at `./build/web`, which contains generated files
+such as `flutter_bootstrap.js`, `main.dart.js`, and `flutter.js`.
