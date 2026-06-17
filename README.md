@@ -66,6 +66,10 @@ For a Git-connected Cloudflare Pages project, use:
 
 ```text
 Framework preset: None
-Build command: flutter pub get && flutter build web --release --dart-define=HTTP_BASE_URL=https://perfect-backend.fly.dev --dart-define=WEBSOCKET_BASE_URL=wss://perfect-backend.fly.dev/ws
+Build command: sh scripts/cloudflare_pages_build.sh
 Build output directory: build/web
 ```
+
+The Cloudflare Pages build image does not include Flutter by default. The build
+script installs Flutter stable into `/tmp/flutter` during the Pages build before
+running `flutter build web`.
