@@ -472,7 +472,7 @@ class _ProfileView extends StatelessWidget {
             },
           ),
           const SizedBox(height: 18),
-          _PlayerGamesPanel(games: _games),
+          const _PlayerGamesPanel(games: _games),
         ],
       ),
     );
