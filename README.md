@@ -74,6 +74,17 @@ The Cloudflare Pages build image does not include Flutter by default. The build
 script installs Flutter stable into `/tmp/flutter` during the Pages build before
 running `flutter build web`.
 
-If deploying through Cloudflare Workers static assets, keep `wrangler.toml`
-committed. It points Cloudflare at `./build/web`, which contains generated files
-such as `flutter_bootstrap.js`, `main.dart.js`, and `flutter.js`.
+If deploying through Cloudflare Workers static assets, deploy only after the
+Flutter build has completed:
+
+```bash
+flutter build web --release \
+  --dart-define=HTTP_BASE_URL=https://perfect-backend.fly.dev \
+  --dart-define=WEBSOCKET_BASE_URL=wss://perfect-backend.fly.dev/ws
+npx wrangler deploy
+```
+
+`wrangler.jsonc` and `wrangler.toml` both point Cloudflare at `./build/web`,
+which contains generated files such as `flutter_bootstrap.js`, `main.dart.js`,
+and `flutter.js`. Do not deploy `web/` directly: it contains only the Flutter
+source web shell and does not include the generated bootstrap script.
