@@ -7,9 +7,11 @@ class GameSnapshot {
     required this.viewerAvailableActions,
     required this.viewerLegalCardIds,
     required this.currentTrick,
+    required this.completedTricks,
     required this.roundScores,
     this.roundScoreAckCount = 0,
     this.viewerRoundScoreAcked = false,
+    this.turnDeadlineUnixMs = 0,
     this.currentTurnPlayerId,
     this.dealerPlayerId,
     this.highestBidderPlayerId,
@@ -37,9 +39,11 @@ class GameSnapshot {
   final List<String> viewerAvailableActions;
   final List<String> viewerLegalCardIds;
   final List<PlayedCardSnapshot> currentTrick;
+  final List<TrickResultSnapshot> completedTricks;
   final List<RoundScoreSnapshot> roundScores;
   final int roundScoreAckCount;
   final bool viewerRoundScoreAcked;
+  final int turnDeadlineUnixMs;
 
   factory GameSnapshot.fromJson(Map<String, dynamic> json) {
     return GameSnapshot(
@@ -68,12 +72,17 @@ class GameSnapshot {
           .map((item) =>
               PlayedCardSnapshot.fromJson(item as Map<String, dynamic>))
           .toList(),
+      completedTricks: ((json['completedTricks'] as List<dynamic>?) ?? [])
+          .map((item) =>
+              TrickResultSnapshot.fromJson(item as Map<String, dynamic>))
+          .toList(),
       roundScores: ((json['roundScores'] as List<dynamic>?) ?? [])
           .map((item) =>
               RoundScoreSnapshot.fromJson(item as Map<String, dynamic>))
           .toList(),
       roundScoreAckCount: (json['roundScoreAckCount'] as int?) ?? 0,
       viewerRoundScoreAcked: (json['viewerRoundScoreAcked'] as bool?) ?? false,
+      turnDeadlineUnixMs: (json['turnDeadlineUnixMs'] as int?) ?? 0,
       players: (json['players'] as List<dynamic>)
           .map((item) => PlayerSnapshot.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -87,6 +96,26 @@ class GameSnapshot {
       }
     }
     return null;
+  }
+}
+
+class TrickResultSnapshot {
+  const TrickResultSnapshot({
+    required this.cards,
+    required this.winnerPlayerId,
+  });
+
+  final List<PlayedCardSnapshot> cards;
+  final String winnerPlayerId;
+
+  factory TrickResultSnapshot.fromJson(Map<String, dynamic> json) {
+    return TrickResultSnapshot(
+      cards: ((json['cards'] as List<dynamic>?) ?? [])
+          .map((item) =>
+              PlayedCardSnapshot.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      winnerPlayerId: (json['winnerPlayerId'] as String?) ?? '',
+    );
   }
 }
 

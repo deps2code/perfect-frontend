@@ -1150,7 +1150,7 @@ class _GameTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
-      final compact = constraints.maxWidth < 760;
+      final compact = constraints.maxWidth < 720;
       final roomSegment = _GameBarSegment(
         icon: Icons.style_rounded,
         title: roomId,
@@ -1161,24 +1161,26 @@ class _GameTopBar extends StatelessWidget {
         icon: Icons.hourglass_top_rounded,
         title: _gameStateText(snapshot),
         subtitle: snapshot.status,
-        accent: const Color(0xFF2FE6A6),
+        accent: _gameStatusAccent(snapshot.status),
+        isStatus: true,
       );
+      final timerSegment = _TurnTimerSegment(snapshot: snapshot);
       final actions = _GameBarActions(snapshot: snapshot);
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.all(compact ? 8 : 10),
             decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: const Color(0x22FFFFFF)),
+              color: const Color(0xF5081025),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0x2430E6FF)),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x66000000),
-                  blurRadius: 26,
-                  offset: Offset(0, 14),
+                  blurRadius: 20,
+                  offset: Offset(0, 10),
                 ),
               ],
             ),
@@ -1187,21 +1189,47 @@ class _GameTopBar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       roomSegment,
-                      const SizedBox(height: 8),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 14),
+                        child: Divider(height: 1, color: Color(0x1FFFFFFF)),
+                      ),
                       stateSegment,
-                      const SizedBox(height: 8),
-                      actions,
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 14),
+                        child: Divider(height: 1, color: Color(0x1FFFFFFF)),
+                      ),
+                      timerSegment,
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(child: actions),
+                          if (profile != null) ...[
+                            const SizedBox(width: 12),
+                            _Avatar(profile: profile!, size: 40),
+                          ],
+                        ],
+                      ),
                     ],
                   )
                 : Row(
                     children: [
-                      Expanded(flex: 3, child: roomSegment),
-                      const SizedBox(width: 8),
-                      Expanded(flex: 4, child: stateSegment),
-                      const SizedBox(width: 8),
+                      Expanded(flex: 4, child: roomSegment),
+                      const SizedBox(
+                        height: 42,
+                        child:
+                            VerticalDivider(width: 1, color: Color(0x1FFFFFFF)),
+                      ),
+                      Expanded(flex: 5, child: stateSegment),
+                      const SizedBox(
+                        height: 42,
+                        child:
+                            VerticalDivider(width: 1, color: Color(0x1FFFFFFF)),
+                      ),
+                      Expanded(flex: 3, child: timerSegment),
+                      const SizedBox(width: 10),
                       actions,
                       if (profile != null) ...[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         _Avatar(profile: profile!, size: 42),
                       ],
                     ],
@@ -1220,6 +1248,77 @@ class _GameTopBar extends StatelessWidget {
         ],
       );
     });
+  }
+}
+
+class _TurnTimerSegment extends StatefulWidget {
+  const _TurnTimerSegment({required this.snapshot});
+
+  final GameSnapshot snapshot;
+
+  @override
+  State<_TurnTimerSegment> createState() => _TurnTimerSegmentState();
+}
+
+class _TurnTimerSegmentState extends State<_TurnTimerSegment> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final deadline = widget.snapshot.turnDeadlineUnixMs;
+    final secondsLeft = deadline <= 0
+        ? null
+        : math.max(
+            0,
+            ((deadline - DateTime.now().millisecondsSinceEpoch) / 1000).ceil(),
+          );
+    final urgent = secondsLeft != null && secondsLeft <= 10;
+    final active = secondsLeft != null;
+    final accent = urgent
+        ? const Color(0xFFFF6B8A)
+        : active
+            ? const Color(0xFFFFC857)
+            : const Color(0xFF8EA4D8);
+    final player = widget.snapshot.currentTurnPlayerId;
+
+    return _GameBarSegment(
+      icon: Icons.timer_outlined,
+      title: active ? '${secondsLeft}s remaining' : 'Turn timer paused',
+      subtitle: active && player != null
+          ? '$player must make a move'
+          : 'No move is required right now',
+      accent: accent,
+      isStatus: true,
+    );
+  }
+}
+
+Color _gameStatusAccent(String status) {
+  switch (status) {
+    case 'FINISHED':
+      return const Color(0xFF2FE6A6);
+    case 'ROUND_SCORING':
+      return const Color(0xFFFFC857);
+    case 'WAITING':
+      return const Color(0xFF8EA4D8);
+    default:
+      return const Color(0xFF30E6FF);
   }
 }
 
@@ -1254,35 +1353,34 @@ class _GameBarSegment extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.accent = Colors.white,
+    this.isStatus = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final Color accent;
+  final bool isStatus;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF202020),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      height: 66,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: accent == Colors.white ? Colors.white : accent,
-              shape: BoxShape.circle,
+              color: accent.withOpacity(isStatus ? 0.18 : 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: accent.withOpacity(0.35)),
             ),
             child: Icon(
               icon,
-              color: const Color(0xFF111111),
-              size: 21,
+              color: accent,
+              size: 20,
             ),
           ),
           const SizedBox(width: 12),
@@ -1306,10 +1404,13 @@ class _GameBarSegment extends StatelessWidget {
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFFB8B8B8),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                  style: TextStyle(
+                    color: isStatus
+                        ? accent.withOpacity(0.82)
+                        : const Color(0xFF9DACD4),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.45,
                   ),
                 ),
               ],
@@ -1329,8 +1430,8 @@ class _GameBarActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 6,
+      runSpacing: 6,
       alignment: WrapAlignment.end,
       children: [
         _GameBarButton(
@@ -1367,31 +1468,35 @@ class _GameBarButton extends StatelessWidget {
     return Tooltip(
       message: label,
       child: Material(
-        color: const Color(0xFF202020),
-        borderRadius: BorderRadius.circular(999),
+        color: const Color(0xFF101A34),
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(12),
           child: Container(
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 15),
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0x1E30E6FF)),
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: Colors.white, size: 24),
+                Icon(icon, color: const Color(0xFFE8F0FF), size: 22),
                 if (badge != null) ...[
                   const SizedBox(width: 8),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(99),
+                      color: const Color(0xFF30E6FF),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       badge!,
                       style: const TextStyle(
-                        color: Colors.black,
+                        color: Color(0xFF051126),
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1908,6 +2013,7 @@ class _GameTableView extends StatefulWidget {
 
 class _GameTableViewState extends State<_GameTableView> {
   int? _shownRoundScoreRound;
+  int? _pendingRoundScoreAnimationRound;
   bool _scoreDialogOpen = false;
   late final ValueNotifier<int> _roundScoreAckCount;
 
@@ -1916,6 +2022,7 @@ class _GameTableViewState extends State<_GameTableView> {
     super.initState();
     _roundScoreAckCount =
         ValueNotifier(widget.state.snapshot?.roundScoreAckCount ?? 0);
+    _queueRoundScoreAnimation(widget.state.snapshot);
     WidgetsBinding.instance.addPostFrameCallback((_) => _showScoreDialog());
   }
 
@@ -1929,6 +2036,25 @@ class _GameTableViewState extends State<_GameTableView> {
   void didUpdateWidget(covariant _GameTableView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _roundScoreAckCount.value = widget.state.snapshot?.roundScoreAckCount ?? 0;
+    _queueRoundScoreAnimation(widget.state.snapshot);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showScoreDialog());
+  }
+
+  void _queueRoundScoreAnimation(GameSnapshot? snapshot) {
+    if (snapshot == null || snapshot.roundScores.isEmpty || _scoreDialogOpen) {
+      return;
+    }
+    final roundNumber = snapshot.roundScores.last.roundNumber;
+    if (_shownRoundScoreRound != roundNumber) {
+      _pendingRoundScoreAnimationRound = roundNumber;
+    }
+  }
+
+  void _onRoundEndAnimationComplete(int roundNumber) {
+    if (!mounted || _pendingRoundScoreAnimationRound != roundNumber) {
+      return;
+    }
+    setState(() => _pendingRoundScoreAnimationRound = null);
     WidgetsBinding.instance.addPostFrameCallback((_) => _showScoreDialog());
   }
 
@@ -1942,6 +2068,9 @@ class _GameTableViewState extends State<_GameTableView> {
     }
     final latest = snapshot.roundScores.last;
     if (_shownRoundScoreRound == latest.roundNumber) {
+      return;
+    }
+    if (_pendingRoundScoreAnimationRound == latest.roundNumber) {
       return;
     }
 
@@ -2020,6 +2149,8 @@ class _GameTableViewState extends State<_GameTableView> {
               snapshot: snapshot,
               viewerPlayerId: widget.state.profile?.playerId ?? '',
               onPlayCard: widget.onPlayCard,
+              roundEndAnimationRound: _pendingRoundScoreAnimationRound,
+              onRoundEndAnimationComplete: _onRoundEndAnimationComplete,
             ),
           ),
         ),
@@ -2046,11 +2177,15 @@ class _TableScene extends StatefulWidget {
     required this.snapshot,
     required this.viewerPlayerId,
     required this.onPlayCard,
+    required this.roundEndAnimationRound,
+    required this.onRoundEndAnimationComplete,
   });
 
   final GameSnapshot snapshot;
   final String viewerPlayerId;
   final ValueChanged<String> onPlayCard;
+  final int? roundEndAnimationRound;
+  final ValueChanged<int> onRoundEndAnimationComplete;
 
   @override
   State<_TableScene> createState() => _TableSceneState();
@@ -2060,8 +2195,12 @@ class _TableSceneState extends State<_TableScene>
     with TickerProviderStateMixin {
   late final AnimationController _dealController;
   late final AnimationController _pulseController;
+  late final AnimationController _trickCollectionController;
   int _lastVersion = -1;
   int _lastHandSize = -1;
+  int? _animatedRoundEnd;
+  bool _collectionCompletesRound = false;
+  TrickResultSnapshot? _collectingTrick;
 
   @override
   void initState() {
@@ -2071,6 +2210,18 @@ class _TableSceneState extends State<_TableScene>
     _pulseController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
+    _trickCollectionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed &&
+            _collectionCompletesRound &&
+            _animatedRoundEnd != null) {
+          widget.onRoundEndAnimationComplete(_animatedRoundEnd!);
+        }
+      });
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeAnimateRoundEnd());
   }
 
   @override
@@ -2083,12 +2234,57 @@ class _TableSceneState extends State<_TableScene>
     }
     _lastVersion = widget.snapshot.version;
     _lastHandSize = handSize;
+    if (widget.snapshot.completedTricks.length >
+        oldWidget.snapshot.completedTricks.length) {
+      final completesRound = widget.snapshot.roundScores.isNotEmpty &&
+          widget.roundEndAnimationRound ==
+              widget.snapshot.roundScores.last.roundNumber;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _animateTrickCollection(
+          widget.snapshot.completedTricks.last,
+          completesRound: completesRound,
+        ),
+      );
+    }
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeAnimateRoundEnd());
+  }
+
+  void _maybeAnimateRoundEnd() {
+    final roundNumber = widget.roundEndAnimationRound;
+    if (!mounted || roundNumber == null || _animatedRoundEnd == roundNumber) {
+      return;
+    }
+    final completedTricks = widget.snapshot.completedTricks;
+    if (completedTricks.isEmpty) {
+      widget.onRoundEndAnimationComplete(roundNumber);
+      return;
+    }
+    _animateTrickCollection(completedTricks.last, completesRound: true);
+  }
+
+  void _animateTrickCollection(
+    TrickResultSnapshot trick, {
+    required bool completesRound,
+  }) {
+    if (!mounted || _trickCollectionController.isAnimating) {
+      return;
+    }
+    if (completesRound) {
+      _animatedRoundEnd = widget.roundEndAnimationRound;
+    }
+    setState(() {
+      _collectionCompletesRound = completesRound;
+      _collectingTrick = trick;
+    });
+    _trickCollectionController.forward(from: 0);
   }
 
   @override
   void dispose() {
     _dealController.dispose();
     _pulseController.dispose();
+    _trickCollectionController.dispose();
     super.dispose();
   }
 
@@ -2131,6 +2327,13 @@ class _TableSceneState extends State<_TableScene>
                 child: _TrickPile(snapshot: snapshot),
               ),
             ),
+            if (_collectingTrick != null)
+              _TrickCollectionAnimation(
+                trick: _collectingTrick!,
+                viewerPlayerId: widget.viewerPlayerId,
+                players: snapshot.players,
+                animation: _trickCollectionController,
+              ),
             Positioned(
               left: 16,
               top: 16,
@@ -2154,6 +2357,94 @@ class _TableSceneState extends State<_TableScene>
           ],
         );
       },
+    );
+  }
+}
+
+class _TrickCollectionAnimation extends StatelessWidget {
+  const _TrickCollectionAnimation({
+    required this.trick,
+    required this.viewerPlayerId,
+    required this.players,
+    required this.animation,
+  });
+
+  final TrickResultSnapshot trick;
+  final String viewerPlayerId;
+  final List<PlayerSnapshot> players;
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final source = Offset(
+              constraints.maxWidth / 2 - 23,
+              constraints.maxHeight / 2 - 31,
+            );
+            final target = _winnerTarget(constraints);
+            return AnimatedBuilder(
+              animation: animation,
+              builder: (context, child) {
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: List.generate(trick.cards.length, (index) {
+                    final start = index * 0.10;
+                    final progress = Curves.easeInCubic.transform(
+                      Interval(start, 1, curve: Curves.easeInOut).transform(
+                        animation.value,
+                      ),
+                    );
+                    final cardOrigin = Offset(
+                        source.dx + (index - (trick.cards.length - 1) / 2) * 24,
+                        source.dy + (index % 2) * 8);
+                    final position = Offset.lerp(cardOrigin, target, progress)!;
+                    return Positioned(
+                      left: position.dx,
+                      top: position.dy,
+                      child: Opacity(
+                        opacity: 1 - math.max(0, progress - 0.86) / 0.14,
+                        child: Transform.rotate(
+                          angle: (1 - progress) * (index - 1) * 0.08,
+                          child: _MiniPlayingCard(
+                            card: trick.cards[index].card,
+                            label: progress > 0.55
+                                ? trick.winnerPlayerId
+                                : trick.cards[index].playerId,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Offset _winnerTarget(BoxConstraints constraints) {
+    if (trick.winnerPlayerId == viewerPlayerId) {
+      return Offset(constraints.maxWidth / 2 - 23, constraints.maxHeight - 130);
+    }
+    final opponents =
+        players.where((player) => player.id != viewerPlayerId).toList();
+    final index =
+        opponents.indexWhere((player) => player.id == trick.winnerPlayerId);
+    if (index < 0) {
+      return Offset(
+          constraints.maxWidth / 2 - 23, constraints.maxHeight / 2 - 31);
+    }
+    final angle =
+        -math.pi / 2 + (2 * math.pi * index / math.max(opponents.length, 1));
+    final center = Offset(constraints.maxWidth / 2, constraints.maxHeight / 2);
+    return Offset(
+      center.dx + math.cos(angle) * constraints.maxWidth * 0.39 - 23,
+      center.dy + math.sin(angle) * constraints.maxHeight * 0.31 - 54,
     );
   }
 }
@@ -2620,6 +2911,11 @@ class _RoundScoreModal extends StatelessWidget {
         }
         return a.playerId.compareTo(b.playerId);
       });
+    final winners = ranked
+        .where((score) => winnerIds.contains(score.playerId))
+        .toList(growable: false);
+    final winnerNames = winners.map((score) => score.playerId).join(' & ');
+    final winnerScore = winners.isEmpty ? null : winners.first.totalScore;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -2655,6 +2951,52 @@ class _RoundScoreModal extends StatelessWidget {
               ),
             ],
           ),
+          if (isFinalScore) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0x2B2FE6A6),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xAA2FE6A6)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'GAME OVER',
+                    style: TextStyle(
+                      color: Color(0xFF2FE6A6),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    winners.length == 1
+                        ? '$winnerNames wins the game'
+                        : '$winnerNames tie for the win',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  if (winnerScore != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      '$winnerScore points',
+                      style: const TextStyle(
+                        color: Color(0xFFC4F9E2),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
